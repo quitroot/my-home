@@ -63,7 +63,7 @@ body.is-admin .card.admin-only-card{display:flex}
     <span id="roleBadge" class="role-badge viewer">צפייה בלבד</span>
     <button type="button" id="authBtn" class="btn-sm" onclick="openAuthBox()">כניסת מנהל</button>
     <button type="button" id="logoutBtn" class="btn-sm admin-only" onclick="logoutAdmin()">יציאה למצב צפייה</button>
-    <button type="button" class="btn-sm admin-only" onclick="openPassBox()">שנה קוד</button>
+    <button type="button" class="btn-sm admin-only" onclick="openPassBox()">הגדרות מנהל</button>
     <button type="button" class="btn-reset admin-only" onclick="resetPts()">אפס נקודות</button>
   </div>
 </header>
@@ -72,7 +72,10 @@ body.is-admin .card.admin-only-card{display:flex}
   <button type="button" onclick="closePanels()" style="float:left;border:none;background:none;font-size:20px;cursor:pointer">✕</button>
   <h3 style="margin:0 0 8px">כניסת מנהל (ADMIN)</h3>
   <div class="row">
-    <input type="password" id="pinIn" placeholder="הזן קוד מנהל..." style="flex:1;text-align:center" onkeypress="if(event.key==='Enter') loginAdmin()">
+    <input type="password" id="pinIn" placeholder="קוד מנהל..." style="flex:1;text-align:center" onkeypress="if(event.key==='Enter') loginAdmin()">
+  </div>
+  <div class="row">
+    <input type="password" id="loginWriteKeyIn" placeholder="מפתח כתיבה של הורים (נשמר רק במכשיר זה)" style="flex:1;text-align:center" onkeypress="if(event.key==='Enter') loginAdmin()">
     <button type="button" class="btn" onclick="loginAdmin()">כניסה</button>
   </div>
   <div id="authMsg" class="msg"></div>
@@ -80,10 +83,13 @@ body.is-admin .card.admin-only-card{display:flex}
 
 <div class="panel slate" id="passBox">
   <button type="button" onclick="closePanels()" style="float:left;border:none;background:none;font-size:20px;cursor:pointer">✕</button>
-  <h3 style="margin:0 0 8px">הגדרת קוד מנהל חדש</h3>
+  <h3 style="margin:0 0 8px">הגדרות מנהל</h3>
   <div class="row">
-    <input type="password" id="newPinIn" placeholder="קוד חדש (לפחות 4 תווים)..." style="flex:1;text-align:center" onkeypress="if(event.key==='Enter') saveNewPin()">
-    <button type="button" class="btn" onclick="saveNewPin()">שמור</button>
+    <input type="password" id="newPinIn" placeholder="קוד מנהל חדש (לפחות 4 תווים)..." style="flex:1;text-align:center">
+  </div>
+  <div class="row">
+    <input type="password" id="writeKeyIn" placeholder="עדכן מפתח כתיבה (Write Key)..." style="flex:1;text-align:center" onkeypress="if(event.key==='Enter') saveAdminSettings()">
+    <button type="button" class="btn" onclick="saveAdminSettings()">שמור</button>
   </div>
   <div id="passMsg" class="msg"></div>
 </div>
@@ -129,16 +135,17 @@ body.is-admin .card.admin-only-card{display:flex}
 </div>
 
 <script>
-// --- הגדרות JSONBin ---
+// --- הגדרות קריאה לענן (מפתח קריאה בלבד לצפייה) ---
 var CLOUD_CONFIG = {
   enabled: true,
   binId: 'PUT_YOUR_BIN_ID_HERE',
-  accessKey: 'PUT_YOUR_ACCESS_KEY_HERE',
+  readKey: 'PUT_YOUR_READ_KEY_HERE',
   autoSyncMs: 15000
 };
 
 var KIDS_KEY = 'hb_k15';
 var PIN_KEY = 'hb_admin_pin_v1';
+var WRITE_KEY_STORAGE = 'hb_admin_write_key_v1';
 var DEFAULT_PIN = '1234';
 
 var kids = [];
@@ -154,12 +161,35 @@ var FIXED_BEHS = [
 var curSkin = '🎮';
 var targetMode = null;
 
-function isCloudReady() {
+function isBinConfigured() {
   return CLOUD_CONFIG.enabled &&
     CLOUD_CONFIG.binId &&
-    CLOUD_CONFIG.binId !== 'PUT_YOUR_BIN_ID_HERE' &&
-    CLOUD_CONFIG.accessKey &&
-    CLOUD_CONFIG.accessKey !== 'PUT_YOUR_ACCESS_KEY_HERE';
+    CLOUD_CONFIG.binId !== 'PUT_YOUR_BIN_ID_HERE';
+}
+
+function getReadKey() {
+  if (CLOUD_CONFIG.readKey && CLOUD_CONFIG.readKey !== 'PUT_YOUR_READ_KEY_HERE') {
+    return CLOUD_CONFIG.readKey;
+  }
+  return '';
+}
+
+function getWriteKey() {
+  try {
+    return (localStorage.getItem(WRITE_KEY_STORAGE) || '').trim();
+  } catch (e) {
+    return '';
+  }
+}
+
+function setWriteKey(val) {
+  try {
+    if (val) {
+      localStorage.setItem(WRITE_KEY_STORAGE, val.trim());
+    } else {
+      localStorage.removeItem(WRITE_KEY_STORAGE);
+    }
+  } catch (e) {}
 }
 
 function setSyncStatus(text) {
@@ -193,3 +223,376 @@ function getAdminPin() {
     return localStorage.getItem(PIN_KEY) || DEFAULT_PIN;
   } catch (e) {
     return DEFAULT_PIN;
+  }
+}
+
+function isEditingPanelOpen() {
+  var ids = ['authBox', 'passBox', 'addBox', 'ptsBox'];
+  for (var i = 0; i < ids.length; i++) {
+    var el = document.getElementById(ids[i]);
+    if (el && el.style.display === 'block') return true;
+  }
+  return false;
+}
+
+function loadFromCloud(isBackground) {
+  var rk = getReadKey();
+  if (!isBinConfigured() || !rk) {
+    setSyncStatus('מצב מקומי');
+    return;
+  }
+  if (isBackground && (document.visibilityState === 'hidden' || isSaving || isEditingPanelOpen())) {
+    return;
+  }
+  if (!isBackground) {
+    setSyncStatus('מסנכרן...');
+  }
+  fetch(getBinUrl() + '/latest', {
+    method: 'GET',
+    headers: {
+      'X-Access-Key': rk
+    }
+  })
+  .then(function(res) {
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  })
+  .then(function(data) {
+    if (isSaving || (isBackground && isEditingPanelOpen())) return;
+    var record = data && data.record ? data.record : data;
+    if (record && Array.isArray(record.kids)) {
+      var nextJson = JSON.stringify(record.kids);
+      if (nextJson !== JSON.stringify(kids)) {
+        kids = record.kids;
+        writeLocalKids(kids);
+        drawAll();
+      }
+      setSyncStatus('מסונכרן (קריאה)');
+    } else {
+      setSyncStatus('נתוני ענן ריקים');
+    }
+  })
+  .catch(function() {
+    setSyncStatus('שגיאת קריאה מהענן');
+  });
+}
+
+function saveAll() {
+  writeLocalKids(kids);
+  if (!isBinConfigured()) {
+    setSyncStatus('נשמר מקומית');
+    return;
+  }
+  var wk = getWriteKey();
+  if (!wk) {
+    setSyncStatus('נשמר מקומית (חסר מפתח כתיבה)');
+    return;
+  }
+  isSaving = true;
+  setSyncStatus('שומר לענן...');
+  fetch(getBinUrl(), {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Access-Key': wk
+    },
+    body: JSON.stringify({ kids: kids })
+  })
+  .then(function(res) {
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    isSaving = false;
+    setSyncStatus('נשמר בענן');
+  })
+  .catch(function() {
+    isSaving = false;
+    setSyncStatus('שגיאה בשמירה לענן');
+  });
+}
+
+function closePanels() {
+  document.getElementById('authBox').style.display = 'none';
+  document.getElementById('passBox').style.display = 'none';
+  document.getElementById('addBox').style.display = 'none';
+  document.getElementById('ptsBox').style.display = 'none';
+}
+
+function openAuthBox() {
+  closePanels();
+  document.getElementById('authBox').style.display = 'block';
+  var pinInp = document.getElementById('pinIn');
+  var wkInp = document.getElementById('loginWriteKeyIn');
+  pinInp.value = '';
+  wkInp.value = getWriteKey();
+  document.getElementById('authMsg').textContent = '';
+  pinInp.focus();
+}
+
+function loginAdmin() {
+  var pinInp = document.getElementById('pinIn');
+  var wkInp = document.getElementById('loginWriteKeyIn');
+  var msg = document.getElementById('authMsg');
+  if (pinInp.value === getAdminPin()) {
+    if (wkInp.value.trim()) {
+      setWriteKey(wkInp.value.trim());
+    }
+    isAdmin = true;
+    closePanels();
+    updateRoleUI();
+    drawAll();
+  } else {
+    msg.className = 'msg err';
+    msg.textContent = 'קוד שגוי';
+    pinInp.focus();
+  }
+}
+
+function logoutAdmin() {
+  isAdmin = false;
+  closePanels();
+  updateRoleUI();
+  drawAll();
+}
+
+function openPassBox() {
+  if (!isAdmin) return;
+  closePanels();
+  document.getElementById('passBox').style.display = 'block';
+  var pinInp = document.getElementById('newPinIn');
+  var wkInp = document.getElementById('writeKeyIn');
+  pinInp.value = '';
+  wkInp.value = getWriteKey();
+  document.getElementById('passMsg').textContent = '';
+  pinInp.focus();
+}
+
+function saveAdminSettings() {
+  if (!isAdmin) return;
+  var pinInp = document.getElementById('newPinIn');
+  var wkInp = document.getElementById('writeKeyIn');
+  var msg = document.getElementById('passMsg');
+  var newPin = pinInp.value.trim();
+  var newWk = wkInp.value.trim();
+
+  if (newPin && newPin.length < 4) {
+    msg.className = 'msg err';
+    msg.textContent = 'קוד מנהל חייב להכיל לפחות 4 תווים';
+    pinInp.focus();
+    return;
+  }
+
+  if (newPin) {
+    try {
+      localStorage.setItem(PIN_KEY, newPin);
+    } catch (e) {}
+  }
+  setWriteKey(newWk);
+
+  msg.className = 'msg ok';
+  msg.textContent = 'ההגדרות נשמרו במכשיר זה';
+  pinInp.value = '';
+}
+
+function updateRoleUI() {
+  document.body.className = isAdmin ? 'is-admin' : '';
+  var badge = document.getElementById('roleBadge');
+  var authBtn = document.getElementById('authBtn');
+  var sumCard = document.getElementById('sumCard');
+  if (isAdmin) {
+    badge.className = 'role-badge admin';
+    badge.textContent = 'מנהל (ADMIN)';
+    authBtn.style.display = 'none';
+    sumCard.className = 'card';
+  } else {
+    badge.className = 'role-badge viewer';
+    badge.textContent = 'צפייה בלבד';
+    authBtn.style.display = 'inline-block';
+    sumCard.className = 'card readonly';
+  }
+}
+
+function openAddBox() {
+  if (!isAdmin) return;
+  closePanels();
+  document.getElementById('addBox').style.display = 'block';
+  var inp = document.getElementById('nameIn');
+  inp.value = '';
+  inp.style.borderColor = '#cbd5e1';
+  inp.focus();
+}
+
+function setSkin(emoji) {
+  curSkin = emoji;
+  document.getElementById('optGame').className = (emoji === '🎮') ? 'opt sel' : 'opt';
+  document.getElementById('optMoon').className = (emoji === '🌙') ? 'opt sel' : 'opt';
+}
+
+function addKidNow() {
+  if (!isAdmin) return;
+  var inp = document.getElementById('nameIn');
+  var val = inp.value.trim();
+  if (!val) {
+    inp.style.borderColor = '#ef4444';
+    inp.focus();
+    return;
+  }
+  kids.push({ name: val, skin: curSkin, pts: 0 });
+  inp.value = '';
+  closePanels();
+  saveAll();
+  drawAll();
+}
+
+function resetPts() {
+  if (!isAdmin) return;
+  for (var i = 0; i < kids.length; i++) {
+    kids[i].pts = 0;
+  }
+  saveAll();
+  drawAll();
+}
+
+function openSumPts() {
+  if (!isAdmin) return;
+  targetMode = 'ALL';
+  closePanels();
+  document.getElementById('ptsTitle').textContent = '🏠 סך הנקודות (משנה לכל אחד)';
+  var numIn = document.getElementById('customNumIn');
+  numIn.value = '';
+  numIn.style.borderColor = '#cbd5e1';
+  drawBehs();
+  document.getElementById('ptsBox').style.display = 'block';
+}
+
+function openKidPts(idx) {
+  if (!isAdmin) return;
+  targetMode = idx;
+  var k = kids[idx];
+  closePanels();
+  document.getElementById('ptsTitle').textContent = k.skin + ' נקודות עבור ' + k.name + ' (' + k.pts + ')';
+  var numIn = document.getElementById('customNumIn');
+  numIn.value = '';
+  numIn.style.borderColor = '#cbd5e1';
+  drawBehs();
+  document.getElementById('ptsBox').style.display = 'block';
+}
+
+function delKid(e, idx) {
+  e.stopPropagation();
+  if (!isAdmin) return;
+  kids.splice(idx, 1);
+  saveAll();
+  drawAll();
+}
+
+function applyPoints(delta) {
+  if (!isAdmin) return;
+  if (targetMode === 'ALL') {
+    for (var j = 0; j < kids.length; j++) {
+      kids[j].pts = Math.max(0, kids[j].pts + delta);
+    }
+  } else if (typeof targetMode === 'number') {
+    kids[targetMode].pts = Math.max(0, kids[targetMode].pts + delta);
+  }
+  saveAll();
+  closePanels();
+  drawAll();
+}
+
+function changeCustomPts(sign) {
+  if (!isAdmin) return;
+  var inp = document.getElementById('customNumIn');
+  var val = parseInt(inp.value, 10);
+  if (isNaN(val) || val <= 0) {
+    inp.style.borderColor = '#ef4444';
+    inp.focus();
+    return;
+  }
+  applyPoints(val * sign);
+}
+
+function drawBehs() {
+  var box = document.getElementById('behList');
+  box.innerHTML = '';
+  for (var i = 0; i < FIXED_BEHS.length; i++) {
+    (function(b) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'beh-btn';
+      btn.textContent = b.t + ' (+' + b.p + ')';
+      btn.onclick = function() {
+        applyPoints(b.p);
+      };
+      box.appendChild(btn);
+    })(FIXED_BEHS[i]);
+  }
+}
+
+function drawAll() {
+  var total = 0;
+  for (var i = 0; i < kids.length; i++) {
+    total += kids[i].pts;
+  }
+  document.getElementById('cnt').textContent = kids.length;
+  var sb = document.getElementById('sumBadge');
+  sb.textContent = total;
+  sb.className = (total === 0) ? 'pts zero' : 'pts';
+
+  var area = document.getElementById('kidsArea');
+  area.innerHTML = '';
+  for (var i = 0; i < kids.length; i++) {
+    (function(idx) {
+      var k = kids[idx];
+      var card = document.createElement('div');
+      card.className = isAdmin ? 'card' : 'card readonly';
+      if (isAdmin) {
+        card.onclick = function() { openKidPts(idx); };
+      }
+
+      var pts = document.createElement('span');
+      pts.className = (k.pts === 0) ? 'pts zero' : 'pts';
+      pts.textContent = k.pts;
+
+      var ava = document.createElement('div');
+      ava.className = 'ava-emoji';
+      ava.textContent = k.skin || '🎮';
+
+      var nm = document.createElement('div');
+      nm.style.fontWeight = 'bold';
+      nm.style.fontSize = '17px';
+      nm.textContent = k.name;
+
+      card.appendChild(pts);
+      if (isAdmin) {
+        var del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'del';
+        del.textContent = '✕';
+        del.onclick = function(e) { delKid(e, idx); };
+        card.appendChild(del);
+      }
+      card.appendChild(ava);
+      card.appendChild(nm);
+      area.appendChild(card);
+    })(i);
+  }
+}
+
+kids = readLocalKids();
+updateRoleUI();
+drawAll();
+loadFromCloud(false);
+
+if (CLOUD_CONFIG.autoSyncMs > 0) {
+  setInterval(function() {
+    loadFromCloud(true);
+  }, CLOUD_CONFIG.autoSyncMs);
+}
+
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible') {
+    loadFromCloud(true);
+  }
+});
+</script>
+</body>
+</html>
