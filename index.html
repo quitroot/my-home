@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>הבית שלי</title>
+<style>
+*{box-sizing:border-box;font-family:Arial,sans-serif}
+body{margin:0;background:#f3f5f8;color:#1e293b}
+header{background:#fff;padding:15px 25px;border-bottom:1px solid #cbd5e1;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+h1{margin:0;font-size:22px}
+.head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.role-badge{padding:6px 12px;border-radius:999px;font-size:13px;font-weight:bold}
+.role-badge.admin{background:#dcfce7;color:#166534}
+.role-badge.viewer{background:#e2e8f0;color:#334155}
+.sync-txt{font-size:12px;color:#64748b}
+input{padding:10px;border:2px solid #cbd5e1;border-radius:10px;font-size:16px}
+.btn{background:#3b82f6;color:#fff;border:none;padding:10px 22px;border-radius:12px;font-size:16px;font-weight:bold;cursor:pointer}
+.btn:hover{background:#2563eb}
+.btn-sm{background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;padding:8px 14px;border-radius:10px;font-size:13px;font-weight:bold;cursor:pointer}
+.btn-sm:hover{background:#e2e8f0}
+.btn-reset{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;padding:8px 14px;border-radius:10px;font-size:13px;font-weight:bold;cursor:pointer}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:18px;padding:24px;max-width:1000px;margin:0 auto}
+.card{background:#fff;border:2px solid #e2e8f0;border-radius:16px;padding:20px 10px 16px;text-align:center;cursor:pointer;position:relative;min-height:155px;display:flex;flex-direction:column;justify-content:center;align-items:center}
+.card:hover{border-color:#3b82f6}
+.card.readonly{cursor:default}
+.card.readonly:hover{border-color:#e2e8f0}
+.card-plus{background:#f8fafc;border:3px dashed #93c5fd;color:#3b82f6}
+.card-plus:hover{background:#eff6ff;border-color:#2563eb}
+.plus-txt{font-size:16px;font-weight:bold}
+.pts{position:absolute;top:10px;left:10px;background:#22c55e;color:#fff;font-weight:bold;border-radius:50%;min-width:32px;height:32px;padding:0 6px;line-height:32px;font-size:14px}
+.pts.zero{background:#94a3b8}
+.del{position:absolute;top:10px;right:10px;background:#f1f5f9;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;color:#64748b}
+.ava-emoji{font-size:56px;line-height:1.1;margin:4px 0 8px}
+.panel{background:#fff;max-width:440px;margin:18px auto 0;padding:20px;border-radius:16px;border:2px solid #3b82f6;text-align:center;display:none}
+.panel.green{border-color:#10b981}
+.panel.slate{border-color:#64748b}
+.skin-pick{display:flex;gap:14px;justify-content:center;margin:12px 0}
+.opt{border:3px solid #e2e8f0;border-radius:14px;padding:12px 20px;cursor:pointer;text-align:center;font-size:44px;background:#f8fafc}
+.opt.sel{border-color:#3b82f6;background:#eff6ff}
+.row{display:flex;gap:8px;justify-content:center;margin-top:10px}
+.beh-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.beh-btn{width:100%;padding:12px 8px;border:2px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;font-weight:bold;font-size:14px}
+.beh-btn:hover{border-color:#22c55e;background:#f0fdf4}
+.custom-box{margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0;display:flex;gap:10px;justify-content:center;align-items:center}
+.icon-btn{border:2px solid #e2e8f0;background:#f8fafc;border-radius:12px;width:48px;height:46px;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:0.15s}
+.icon-btn.plus:hover{border-color:#22c55e;background:#f0fdf4}
+.icon-btn.trash:hover{border-color:#ef4444;background:#fef2f2}
+.msg{margin-top:8px;font-size:13px;min-height:18px}
+.err{color:#dc2626}
+.ok{color:#15803d}
+.admin-only{display:none}
+body.is-admin .admin-only{display:inline-block}
+body.is-admin .card.admin-only-card{display:flex}
+.admin-only-card{display:none}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏠 הבית שלי (<span id="cnt">0</span> ילדים)</h1>
+  <div class="head-actions">
+    <span id="syncStatus" class="sync-txt">מצב מקומי</span>
+    <span id="roleBadge" class="role-badge viewer">צפייה בלבד</span>
+    <button type="button" id="authBtn" class="btn-sm" onclick="openAuthBox()">כניסת מנהל</button>
+    <button type="button" id="logoutBtn" class="btn-sm admin-only" onclick="logoutAdmin()">יציאה למצב צפייה</button>
+    <button type="button" class="btn-sm admin-only" onclick="openPassBox()">שנה קוד</button>
+    <button type="button" class="btn-reset admin-only" onclick="resetPts()">אפס נקודות</button>
+  </div>
+</header>
+
+<div class="panel slate" id="authBox">
+  <button type="button" onclick="closePanels()" style="float:left;border:none;background:none;font-size:20px;cursor:pointer">✕</button>
+  <h3 style="margin:0 0 8px">כניסת מנהל (ADMIN)</h3>
+  <div class="row">
+    <input type="password" id="pinIn" placeholder="הזן קוד מנהל..." style="flex:1;text-align:center" onkeypress="if(event.key==='Enter') loginAdmin()">
+    <button type="button" class="btn" onclick="loginAdmin()">כניסה</button>
+  </div>
+  <div id="authMsg" class="msg"></div>
+</div>
+
+<div class="panel slate" id="passBox">
+  <button type="button" onclick="closePanels()" style="float:left;border:none;background:none;font-size:20px;cursor:pointer">✕</button>
+  <h3 style="margin:0 0 8px">הגדרת קוד מנהל חדש</h3>
+  <div class="row">
+    <input type="password" id="newPinIn" placeholder="קוד חדש (לפחות 4 תווים)..." style="flex:1;text-align:center" onkeypress="if(event.key==='Enter') saveNewPin()">
+    <button type="button" class="btn" onclick="saveNewPin()">שמור</button>
+  </div>
+  <div id="passMsg" class="msg"></div>
+</div>
+
+<div class="panel" id="addBox">
+  <button type="button" onclick="closePanels()" style="float:left;border:none;background:none;font-size:20px;cursor:pointer">✕</button>
+  <h3 style="margin:0 0 8px">יצירת ילד/ה חדש/ה</h3>
+  <div class="skin-pick">
+    <div class="opt sel" id="optGame" onclick="setSkin('🎮')">🎮</div>
+    <div class="opt" id="optMoon" onclick="setSkin('🌙')">🌙</div>
+  </div>
+  <div class="row">
+    <input type="text" id="nameIn" placeholder="כתבו שם של ילד/ה..." style="flex:1" onkeypress="if(event.key==='Enter') addKidNow()">
+    <button type="button" class="btn" onclick="addKidNow()">צור</button>
+  </div>
+</div>
+
+<div class="panel green" id="ptsBox">
+  <button type="button" onclick="closePanels()" style="float:left;border:none;background:none;font-size:20px;cursor:pointer">✕</button>
+  <h3 id="ptsTitle" style="margin:0"></h3>
+  <div class="beh-grid" id="behList"></div>
+  
+  <div class="custom-box">
+    <input type="number" id="customNumIn" placeholder="הכנס מספר..." min="1" style="flex:1;text-align:center;font-weight:bold" onkeypress="if(event.key==='Enter') changeCustomPts(1)">
+    <button type="button" class="icon-btn plus" title="הוסף נקודות" onclick="changeCustomPts(1)">➕</button>
+    <button type="button" class="icon-btn trash" title="הורד נקודות" onclick="changeCustomPts(-1)">🗑️</button>
+  </div>
+</div>
+
+<div class="grid" id="grid">
+  <div class="card" id="sumCard" onclick="openSumPts()">
+    <span class="pts zero" id="sumBadge">0</span>
+    <div class="ava-emoji">🏠</div>
+    <div style="font-weight:bold;font-size:17px">סך הנקודות</div>
+  </div>
+
+  <div id="kidsArea" style="display:contents"></div>
+
+  <div class="card card-plus admin-only-card" onclick="openAddBox()">
+    <div class="ava-emoji">➕</div>
+    <div class="plus-txt">ילד/ה חדש/ה</div>
+  </div>
+</div>
+
+<script>
+// --- הגדרות JSONBin ---
+var CLOUD_CONFIG = {
+  enabled: true,
+  binId: 'PUT_YOUR_BIN_ID_HERE',
+  accessKey: 'PUT_YOUR_ACCESS_KEY_HERE',
+  autoSyncMs: 15000
+};
+
+var KIDS_KEY = 'hb_k15';
+var PIN_KEY = 'hb_admin_pin_v1';
+var DEFAULT_PIN = '1234';
+
+var kids = [];
+var isAdmin = false;
+var isSaving = false;
+var FIXED_BEHS = [
+  { t: 'לזרוק זבל', p: 1 },
+  { t: 'לנקות ולסדר את כל הבית', p: 2 },
+  { t: 'שטיפת כלים צד אחד', p: 1 },
+  { t: 'לפנות מדיח', p: 1 },
+  { t: 'לעשות כביסה', p: 1 }
+];
+var curSkin = '🎮';
+var targetMode = null;
+
+function isCloudReady() {
+  return CLOUD_CONFIG.enabled &&
+    CLOUD_CONFIG.binId &&
+    CLOUD_CONFIG.binId !== 'PUT_YOUR_BIN_ID_HERE' &&
+    CLOUD_CONFIG.accessKey &&
+    CLOUD_CONFIG.accessKey !== 'PUT_YOUR_ACCESS_KEY_HERE';
+}
+
+function setSyncStatus(text) {
+  var el = document.getElementById('syncStatus');
+  if (el) el.textContent = text;
+}
+
+function getBinUrl() {
+  return 'https://api.jsonbin.io/v3/b/' + encodeURIComponent(CLOUD_CONFIG.binId);
+}
+
+function readLocalKids() {
+  try {
+    var s = localStorage.getItem(KIDS_KEY);
+    if (s) {
+      var parsed = JSON.parse(s);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {}
+  return [];
+}
+
+function writeLocalKids(list) {
+  try {
+    localStorage.setItem(KIDS_KEY, JSON.stringify(list));
+  } catch (e) {}
+}
+
+function getAdminPin() {
+  try {
+    return localStorage.getItem(PIN_KEY) || DEFAULT_PIN;
+  } catch (e) {
+    return DEFAULT_PIN;
