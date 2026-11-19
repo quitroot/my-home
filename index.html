@@ -59,39 +59,33 @@ body.is-admin .card.admin-only-card{display:flex}
 <header>
   <h1>🏠 הבית שלי (<span id="cnt">0</span> ילדים)</h1>
   <div class="head-actions">
-    <span id="syncStatus" class="sync-txt">מצב מקומי</span>
+    <span id="syncStatus" class="sync-txt">ממתין לענן</span>
     <span id="roleBadge" class="role-badge viewer">צפייה בלבד</span>
     <button type="button" id="authBtn" class="btn-sm" onclick="openAuthBox()">כניסת מנהל</button>
     <button type="button" id="logoutBtn" class="btn-sm admin-only" onclick="logoutAdmin()">יציאה למצב צפייה</button>
-    <button type="button" class="btn-sm admin-only" onclick="openPassBox()">הגדרות מנהל</button>
+    <button type="button" class="btn-sm admin-only" onclick="openKeyBox()">מפתח כתיבה</button>
     <button type="button" class="btn-reset admin-only" onclick="resetPts()">אפס נקודות</button>
   </div>
 </header>
 
 <div class="panel slate" id="authBox">
   <button type="button" onclick="closePanels()" style="float:left;border:none;background:none;font-size:20px;cursor:pointer">✕</button>
-  <h3 style="margin:0 0 8px">כניסת מנהל (ADMIN)</h3>
+  <h3 style="margin:0 0 8px">כניסת מנהל (הורים)</h3>
   <div class="row">
-    <input type="password" id="pinIn" placeholder="קוד מנהל..." style="flex:1;text-align:center" onkeypress="if(event.key==='Enter') loginAdmin()">
-  </div>
-  <div class="row">
-    <input type="password" id="loginWriteKeyIn" placeholder="מפתח כתיבה של הורים (נשמר רק במכשיר זה)" style="flex:1;text-align:center" onkeypress="if(event.key==='Enter') loginAdmin()">
+    <input type="password" id="loginWriteKeyIn" placeholder="הזן מפתח כתיבה (Write Key)..." style="flex:1;text-align:center" onkeypress="if(event.key==='Enter') loginAdmin()">
     <button type="button" class="btn" onclick="loginAdmin()">כניסה</button>
   </div>
   <div id="authMsg" class="msg"></div>
 </div>
 
-<div class="panel slate" id="passBox">
+<div class="panel slate" id="keyBox">
   <button type="button" onclick="closePanels()" style="float:left;border:none;background:none;font-size:20px;cursor:pointer">✕</button>
-  <h3 style="margin:0 0 8px">הגדרות מנהל</h3>
+  <h3 style="margin:0 0 8px">ניהול מפתח כתיבה (במכשיר זה)</h3>
   <div class="row">
-    <input type="password" id="newPinIn" placeholder="קוד מנהל חדש (לפחות 4 תווים)..." style="flex:1;text-align:center">
+    <input type="password" id="editWriteKeyIn" placeholder="מפתח כתיבה חדש..." style="flex:1;text-align:center" onkeypress="if(event.key==='Enter') saveWriteKeyFromBox()">
+    <button type="button" class="btn" onclick="saveWriteKeyFromBox()">שמור</button>
   </div>
-  <div class="row">
-    <input type="password" id="writeKeyIn" placeholder="עדכן מפתח כתיבה (Write Key)..." style="flex:1;text-align:center" onkeypress="if(event.key==='Enter') saveAdminSettings()">
-    <button type="button" class="btn" onclick="saveAdminSettings()">שמור</button>
-  </div>
-  <div id="passMsg" class="msg"></div>
+  <div id="keyMsg" class="msg"></div>
 </div>
 
 <div class="panel" id="addBox">
@@ -143,10 +137,7 @@ var CLOUD_CONFIG = {
   autoSyncMs: 15000
 };
 
-var KIDS_KEY = 'hb_k15';
-var PIN_KEY = 'hb_admin_pin_v1';
 var WRITE_KEY_STORAGE = 'hb_admin_write_key_v1';
-var DEFAULT_PIN = '1234';
 
 var kids = [];
 var isAdmin = false;
@@ -169,7 +160,7 @@ function isBinConfigured() {
 
 function getReadKey() {
   if (CLOUD_CONFIG.readKey && CLOUD_CONFIG.readKey !== 'PUT_YOUR_READ_KEY_HERE') {
-    return CLOUD_CONFIG.readKey;
+    return CLOUD_CONFIG.readKey.trim();
   }
   return '';
 }
@@ -184,8 +175,9 @@ function getWriteKey() {
 
 function setWriteKey(val) {
   try {
-    if (val) {
-      localStorage.setItem(WRITE_KEY_STORAGE, val.trim());
+    var clean = (val || '').trim();
+    if (clean) {
+      localStorage.setItem(WRITE_KEY_STORAGE, clean);
     } else {
       localStorage.removeItem(WRITE_KEY_STORAGE);
     }
@@ -198,36 +190,11 @@ function setSyncStatus(text) {
 }
 
 function getBinUrl() {
-  return 'https://api.jsonbin.io/v3/b/' + encodeURIComponent(CLOUD_CONFIG.binId);
-}
-
-function readLocalKids() {
-  try {
-    var s = localStorage.getItem(KIDS_KEY);
-    if (s) {
-      var parsed = JSON.parse(s);
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch (e) {}
-  return [];
-}
-
-function writeLocalKids(list) {
-  try {
-    localStorage.setItem(KIDS_KEY, JSON.stringify(list));
-  } catch (e) {}
-}
-
-function getAdminPin() {
-  try {
-    return localStorage.getItem(PIN_KEY) || DEFAULT_PIN;
-  } catch (e) {
-    return DEFAULT_PIN;
-  }
+  return 'https://api.jsonbin.io/v3/b/' + encodeURIComponent(CLOUD_CONFIG.binId.trim());
 }
 
 function isEditingPanelOpen() {
-  var ids = ['authBox', 'passBox', 'addBox', 'ptsBox'];
+  var ids = ['authBox', 'keyBox', 'addBox', 'ptsBox'];
   for (var i = 0; i < ids.length; i++) {
     var el = document.getElementById(ids[i]);
     if (el && el.style.display === 'block') return true;
@@ -238,14 +205,14 @@ function isEditingPanelOpen() {
 function loadFromCloud(isBackground) {
   var rk = getReadKey();
   if (!isBinConfigured() || !rk) {
-    setSyncStatus('מצב מקומי');
+    setSyncStatus('חסר חיבור לענן');
     return;
   }
   if (isBackground && (document.visibilityState === 'hidden' || isSaving || isEditingPanelOpen())) {
     return;
   }
   if (!isBackground) {
-    setSyncStatus('מסנכרן...');
+    setSyncStatus('מסנכרן מהענן...');
   }
   fetch(getBinUrl() + '/latest', {
     method: 'GET',
@@ -264,28 +231,28 @@ function loadFromCloud(isBackground) {
       var nextJson = JSON.stringify(record.kids);
       if (nextJson !== JSON.stringify(kids)) {
         kids = record.kids;
-        writeLocalKids(kids);
         drawAll();
       }
-      setSyncStatus('מסונכרן (קריאה)');
+      setSyncStatus('מסונכרן עם הענן');
     } else {
-      setSyncStatus('נתוני ענן ריקים');
+      kids = [];
+      drawAll();
+      setSyncStatus('אין נתונים בענן');
     }
   })
   .catch(function() {
-    setSyncStatus('שגיאת קריאה מהענן');
+    setSyncStatus('שגיאת חיבור לענן');
   });
 }
 
 function saveAll() {
-  writeLocalKids(kids);
   if (!isBinConfigured()) {
-    setSyncStatus('נשמר מקומית');
+    setSyncStatus('חסר חיבור לענן');
     return;
   }
   var wk = getWriteKey();
   if (!wk) {
-    setSyncStatus('נשמר מקומית (חסר מפתח כתיבה)');
+    setSyncStatus('חסר מפתח כתיבה');
     return;
   }
   isSaving = true;
@@ -300,6 +267,9 @@ function saveAll() {
   })
   .then(function(res) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  })
+  .then(function() {
     isSaving = false;
     setSyncStatus('נשמר בענן');
   })
@@ -311,7 +281,7 @@ function saveAll() {
 
 function closePanels() {
   document.getElementById('authBox').style.display = 'none';
-  document.getElementById('passBox').style.display = 'none';
+  document.getElementById('keyBox').style.display = 'none';
   document.getElementById('addBox').style.display = 'none';
   document.getElementById('ptsBox').style.display = 'none';
 }
@@ -319,31 +289,27 @@ function closePanels() {
 function openAuthBox() {
   closePanels();
   document.getElementById('authBox').style.display = 'block';
-  var pinInp = document.getElementById('pinIn');
   var wkInp = document.getElementById('loginWriteKeyIn');
-  pinInp.value = '';
   wkInp.value = getWriteKey();
   document.getElementById('authMsg').textContent = '';
-  pinInp.focus();
+  wkInp.focus();
 }
 
 function loginAdmin() {
-  var pinInp = document.getElementById('pinIn');
   var wkInp = document.getElementById('loginWriteKeyIn');
   var msg = document.getElementById('authMsg');
-  if (pinInp.value === getAdminPin()) {
-    if (wkInp.value.trim()) {
-      setWriteKey(wkInp.value.trim());
-    }
-    isAdmin = true;
-    closePanels();
-    updateRoleUI();
-    drawAll();
-  } else {
+  var wk = wkInp.value.trim();
+  if (!wk) {
     msg.className = 'msg err';
-    msg.textContent = 'קוד שגוי';
-    pinInp.focus();
+    msg.textContent = 'יש להזין מפתח כתיבה של הורים';
+    wkInp.focus();
+    return;
   }
+  setWriteKey(wk);
+  isAdmin = true;
+  closePanels();
+  updateRoleUI();
+  drawAll();
 }
 
 function logoutAdmin() {
@@ -353,43 +319,30 @@ function logoutAdmin() {
   drawAll();
 }
 
-function openPassBox() {
+function openKeyBox() {
   if (!isAdmin) return;
   closePanels();
-  document.getElementById('passBox').style.display = 'block';
-  var pinInp = document.getElementById('newPinIn');
-  var wkInp = document.getElementById('writeKeyIn');
-  pinInp.value = '';
+  document.getElementById('keyBox').style.display = 'block';
+  var wkInp = document.getElementById('editWriteKeyIn');
   wkInp.value = getWriteKey();
-  document.getElementById('passMsg').textContent = '';
-  pinInp.focus();
+  document.getElementById('keyMsg').textContent = '';
+  wkInp.focus();
 }
 
-function saveAdminSettings() {
+function saveWriteKeyFromBox() {
   if (!isAdmin) return;
-  var pinInp = document.getElementById('newPinIn');
-  var wkInp = document.getElementById('writeKeyIn');
-  var msg = document.getElementById('passMsg');
-  var newPin = pinInp.value.trim();
-  var newWk = wkInp.value.trim();
-
-  if (newPin && newPin.length < 4) {
+  var wkInp = document.getElementById('editWriteKeyIn');
+  var msg = document.getElementById('keyMsg');
+  var wk = wkInp.value.trim();
+  if (!wk) {
     msg.className = 'msg err';
-    msg.textContent = 'קוד מנהל חייב להכיל לפחות 4 תווים';
-    pinInp.focus();
+    msg.textContent = 'מפתח הכתיבה לא יכול להיות ריק';
+    wkInp.focus();
     return;
   }
-
-  if (newPin) {
-    try {
-      localStorage.setItem(PIN_KEY, newPin);
-    } catch (e) {}
-  }
-  setWriteKey(newWk);
-
+  setWriteKey(wk);
   msg.className = 'msg ok';
-  msg.textContent = 'ההגדרות נשמרו במכשיר זה';
-  pinInp.value = '';
+  msg.textContent = 'מפתח הכתיבה עודכן במכשיר זה';
 }
 
 function updateRoleUI() {
@@ -399,7 +352,7 @@ function updateRoleUI() {
   var sumCard = document.getElementById('sumCard');
   if (isAdmin) {
     badge.className = 'role-badge admin';
-    badge.textContent = 'מנהל (ADMIN)';
+    badge.textContent = 'מנהל (הורים)';
     authBtn.style.display = 'none';
     sumCard.className = 'card';
   } else {
@@ -438,8 +391,8 @@ function addKidNow() {
   kids.push({ name: val, skin: curSkin, pts: 0 });
   inp.value = '';
   closePanels();
-  saveAll();
   drawAll();
+  saveAll();
 }
 
 function resetPts() {
@@ -447,8 +400,8 @@ function resetPts() {
   for (var i = 0; i < kids.length; i++) {
     kids[i].pts = 0;
   }
-  saveAll();
   drawAll();
+  saveAll();
 }
 
 function openSumPts() {
@@ -480,8 +433,8 @@ function delKid(e, idx) {
   e.stopPropagation();
   if (!isAdmin) return;
   kids.splice(idx, 1);
-  saveAll();
   drawAll();
+  saveAll();
 }
 
 function applyPoints(delta) {
@@ -493,9 +446,9 @@ function applyPoints(delta) {
   } else if (typeof targetMode === 'number') {
     kids[targetMode].pts = Math.max(0, kids[targetMode].pts + delta);
   }
-  saveAll();
   closePanels();
   drawAll();
+  saveAll();
 }
 
 function changeCustomPts(sign) {
@@ -577,7 +530,6 @@ function drawAll() {
   }
 }
 
-kids = readLocalKids();
 updateRoleUI();
 drawAll();
 loadFromCloud(false);
